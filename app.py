@@ -476,7 +476,7 @@ uploaded_file = st.file_uploader("Upload PDF (e.g., Data Input.pdf)", type=['pdf
 if uploaded_file and api_key:
     raw_text = extract_text_from_pdf(uploaded_file)
 
-    if st.button("🚀 Extract & Structure (100% Verbatim Exact Match)"):
+    if st.button("🚀 Extract & Structure "):
         with st.spinner("Deep reasoning: Parsing with guided examples..."):
             parsed = process_with_ai(raw_text, api_key)
             if parsed:
