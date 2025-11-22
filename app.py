@@ -469,7 +469,7 @@ Respond ONLY with parsed facts in schema order.
         return None
 
 # --- UI IMPLEMENTATION ---
-st.title("📄 Advanced AI Document Structurer (Exact Match Edition)")
+st.title("📄 Advanced AI Document Structurer")
 
 uploaded_file = st.file_uploader("Upload PDF (e.g., Data Input.pdf)", type=['pdf'])
 
