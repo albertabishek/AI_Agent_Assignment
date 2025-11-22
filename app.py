@@ -20,7 +20,6 @@ if 'extracted_data' not in st.session_state:
 with st.sidebar:
     st.title("🤖 Advanced Agent Config")
     api_key = st.text_input("OpenAI API Key", type="password")
-    st.info("🔥 Upgrades: Full-Sentence Comments | Serial Dates | 100% Verbatim | Exact Match")
     st.markdown("---")
     st.caption("Features:")
     st.caption("✅ Hybrid LLM + Rules")
