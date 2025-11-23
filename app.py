@@ -1,6 +1,6 @@
 # app.py
 import streamlit as st
-import fitz 
+import fitz  # PyMuPDF
 import pandas as pd
 import openai
 from pydantic import BaseModel, Field
@@ -44,7 +44,6 @@ ExpectedKeys = Literal[
     "Technical Proficiency"
 ]
 
- 
 # Instead define the explicit ordered list of keys for use in code.
 KEY_ORDER = [
     "First Name", "Last Name", "Date of Birth", "Birth City", "Birth State",
@@ -106,7 +105,6 @@ def parse_date_to_natural(value: str) -> str:
         except Exception:
             pass
 
-    
     try:
         # try flexible component extraction e.g. "1989-03-15"
         parts = re.findall(r'\d+', s)
@@ -326,9 +324,6 @@ def post_process_facts(facts: List[ExtractedFact], original_text: str) -> List[d
     rows = []
     seen = set()
 
-    # split into sentences (approx)
-    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', original_text)
-
     for fact in facts:
         if fact.key in seen:
             continue
@@ -342,42 +337,21 @@ def post_process_facts(facts: List[ExtractedFact], original_text: str) -> List[d
         if ctx:
             ctx = ctx.strip()
 
-      
+  
+        # Generic fallbacks that are safe:
         if fact.key == 'Blood Group' and not ctx:
-            ctx = 'Emergency contact purposes. '
+            
+             pass 
+
         if fact.key == 'Nationality' and ctx:
+            # Safe clean-up regex
             ctx = re.sub(r'As an Indian national, his ', '', ctx)
+            
         if fact.key == 'Age' and not ctx:
-            # fallback comment style
-            m = re.search(r'His birthdate is formatted.*', original_text)
-            if m:
-                ctx = 'As on year 2024. ' + m.group().rstrip('. ') + '. '
-            else:
-                ctx = 'As on year 2024. '
-        if fact.key == '12th overall board score' and not ctx:
-            ctx = 'Outstanding achievement'
-        if fact.key == 'Technical Proficiency' and not ctx:
-            tech_para_m = re.search(r'In terms of technical proficiency.*?(?=\s{2,}|\Z)', original_text, re.DOTALL)
-            if tech_para_m:
-                tech_para = tech_para_m.group().strip()
-                # keep trailing tab as your example data input file used
-                ctx = tech_para + ' \t'
-        if 'Certifications' in fact.key and not ctx:
-            cert_start = re.search(r"Vijay's commitment to continuous learning.*?(?=while his SAFe|$)", original_text, re.DOTALL)
-            if cert_start:
-                full_cert = cert_start.group()
-                # heuristics to distribute portions across certs (best-effort)
-                if fact.key == 'Certifications 1':
-                    ctx = full_cert.split('followed by')[0].strip() + ','
-                elif fact.key == 'Certifications 2':
-                    ctx = 'Pursued in the year 2020 with 875 points. '
-                elif fact.key == 'Certifications 3':
-                    try:
-                        ctx = full_cert.split('while his SAFe')[0].split('certification, ')[1] + ', These certifications complement his practical experience and demonstrate his expertise across multiple technology platforms. '
-                    except:
-                        ctx = full_cert + ' '
-                elif fact.key == 'Certifications 4':
-                    ctx = 'Earned him an outstanding 98% score. Certifications complement his practical experience and demonstrate his expertise across multiple technology platforms. '
+             # Safe fallback if birthdate format exists in text
+             pass
+
+        # We remove the specific "Certifications" blocks that injected Vijay's data.
 
         rows.append({
             "#": KEY_ORDER.index(fact.key) + 1,
@@ -395,71 +369,79 @@ def process_with_ai(text_content: str, api_key: str) -> Optional[DocumentStructu
     """
     client = openai.OpenAI(api_key=api_key)
 
-    #prompt with exact examples for precision
+    # Prompt with examples strictly marked as "EXAMPLES" to prevent hallucination
     examples = """
-Examples (use these EXACT values and comments for matching keys; derive similarly for others):
-- Key: 'First Name', Value: 'Vijay', Context: ''
-- Key: 'Last Name', Value: 'Kumar', Context: ''
-- Key: 'Date of Birth', Value: '1989-03-15', Context: ''
-- Key: 'Birth City', Value: 'Jaipur', Context: 'Born and raised in the Pink City of India, his birthplace provides valuable regional profiling context'
-- Key: 'Birth State', Value: 'Rajasthan', Context: 'Born and raised in the Pink City of India, his birthplace provides valuable regional profiling context'
-- Key: 'Age', Value: '35', Context: 'As on year 2024. His birthdate is formatted in ISO format for easy parsing, while his age serves as a key demographic marker for analytical purposes. '
-- Key: 'Blood Group', Value: 'O+', Context: 'Emergency contact purposes. '
-- Key: 'Nationality', Value: 'Indian', Context: 'Citizenship status is important for understanding his work authorization and visa requirements across different employment opportunities. '
-- Key: 'Joining Date of first professional role', Value: '2012-07-01', Context: ''
-- Key: 'Designation of first professional role', Value: 'Junior Developer', Context: ''
-- Key: 'Salary of first professional role', Value: '350000', Context: ''
-- Key: 'Salary currency of first professional role', Value: 'INR', Context: ''
-- Key: 'Current Organization', Value: 'Resse Analytics', Context: ''
-- Key: 'Current Joining Date', Value: '2021-06-15', Context: ''
-- Key: 'Current Designation', Value: 'Senior Data Engineer', Context: ''
-- Key: 'Current Salary', Value: '2800000', Context: 'This salary progression from his starting compensation to his current peak salary of 2,800,000 INR represents a substantial eight- fold increase over his twelve-year career span. '
-- Key: 'Current Salary Currency', Value: 'INR', Context: ''
-- Key: 'Previous Organization', Value: 'LakeCorp', Context: ''
-- Key: 'Previous Joining Date', Value: '2018-02-01', Context: ''
-- Key: 'Previous end year', Value: '2021', Context: ''
-- Key: 'Previous Starting Designation', Value: 'Data Analyst ', Context: 'Promoted in 2019'
-- Key: 'High School', Value: 'St. Xavier's School, Jaipur', Context: ''
-- Key: '12th standard pass out year', Value: '2007', Context: 'His core subjects included Mathematics, Physics, Chemistry, and Computer Science, demonstrating his early aptitude for technical disciplines. '
-- Key: '12th overall board score', Value: '0.925', Context: 'Outstanding achievement'
-- Key: 'Undergraduate degree', Value: 'B.Tech (Computer Science)', Context: ''
-- Key: 'Undergraduate college', Value: 'IIT Delhi', Context: ''
-- Key: 'Undergraduate year', Value: '2011', Context: 'Graduating with honors and ranking 15th among 120 students in his class. '
-- Key: 'Undergraduate CGPA', Value: '8.7', Context: 'On a 10-point scale, '
-- Key: 'Graduation degree', Value: 'M.Tech (Data Science)', Context: ''
-- Key: 'Graduation college', Value: 'IIT Bombay', Context: 'Continued academic excellence at IIT Bombay'
-- Key: 'Graduation year', Value: '2013', Context: ''
-- Key: 'Graduation CGPA', Value: '9.2', Context: 'Considered exceptional and scoring 95 out of 100 for his final year thesis project. '
-- Key: 'Certifications 1', Value: 'AWS Solutions Architect ', Context: 'Vijay's commitment to continuous learning is evident through his impressive certification scores. He passed the AWS Solutions Architect exam in 2019 with a score of 920 out of 1000'
-- Key: 'Certifications 2', Value: 'Azure Data Engineer', Context: 'Pursued in the year 2020 with 875 points. '
-- Key: 'Certifications 3', Value: 'Project Management Professional certification', Context: 'Obtained in 2021, was achieved with an "Above Target" rating from PMI, These certifications complement his practical experience and demonstrate his expertise across multiple technology platforms. '
-- Key: 'Certifications 4', Value: 'SAFe Agilist certification', Context: 'Earned him an outstanding 98% score. Certifications complement his practical experience and demonstrate his expertise across multiple technology platforms. '
-- Key: 'Technical Proficiency', Value: '', Context: 'In terms of technical proficiency, Vijay rates himself highly across various skills, with SQL expertise at a perfect 10 out of 10, reflecting his daily usage since 2012. His Python proficiency scores 9 out of 10, backed by over seven years of practical experience, while his machine learning capabilities rate 8 out of 10, representing five years of hands-on implementation. His cloud platform expertise, including AWS and Azure certifications, also rates 9 out of 10 with more than four years of experience, and his data visualization skills in Power BI and Tableau score 8 out of 10, establishing him as an expert in the field. \t'
-"""
+    --- EXAMPLES FOR FORMATTING ONLY (DO NOT EXTRACT CONTENT FROM HERE) ---
+    - Key: 'First Name', Value: 'Vijay', Context: ''
+    - Key: 'Last Name', Value: 'Kumar', Context: ''
+    - Key: 'Date of Birth', Value: '1989-03-15', Context: ''
+    - Key: 'Birth City', Value: 'Jaipur', Context: 'Born and raised in the Pink City of India, his birthplace provides valuable regional profiling context'
+    - Key: 'Birth State', Value: 'Rajasthan', Context: 'Born and raised in the Pink City of India, his birthplace provides valuable regional profiling context'
+    - Key: 'Age', Value: '35', Context: 'As on year 2024. His birthdate is formatted in ISO format for easy parsing, while his age serves as a key demographic marker for analytical purposes. '
+    - Key: 'Blood Group', Value: 'O+', Context: 'Emergency contact purposes. '
+    - Key: 'Nationality', Value: 'Indian', Context: 'Citizenship status is important for understanding his work authorization and visa requirements across different employment opportunities. '
+    - Key: 'Joining Date of first professional role', Value: '2012-07-01', Context: ''
+    - Key: 'Designation of first professional role', Value: 'Junior Developer', Context: ''
+    - Key: 'Salary of first professional role', Value: '350000', Context: ''
+    - Key: 'Salary currency of first professional role', Value: 'INR', Context: ''
+    - Key: 'Current Organization', Value: 'Resse Analytics', Context: ''
+    - Key: 'Current Joining Date', Value: '2021-06-15', Context: ''
+    - Key: 'Current Designation', Value: 'Senior Data Engineer', Context: ''
+    - Key: 'Current Salary', Value: '2800000', Context: 'This salary progression from his starting compensation to his current peak salary of 2,800,000 INR represents a substantial eight- fold increase over his twelve-year career span. '
+    - Key: 'Current Salary Currency', Value: 'INR', Context: ''
+    - Key: 'Previous Organization', Value: 'LakeCorp', Context: ''
+    - Key: 'Previous Joining Date', Value: '2018-02-01', Context: ''
+    - Key: 'Previous end year', Value: '2021', Context: ''
+    - Key: 'Previous Starting Designation', Value: 'Data Analyst ', Context: 'Promoted in 2019'
+    - Key: 'High School', Value: 'St. Xavier's School, Jaipur', Context: ''
+    - Key: '12th standard pass out year', Value: '2007', Context: 'His core subjects included Mathematics, Physics, Chemistry, and Computer Science, demonstrating his early aptitude for technical disciplines. '
+    - Key: '12th overall board score', Value: '0.925', Context: 'Outstanding achievement'
+    - Key: 'Undergraduate degree', Value: 'B.Tech (Computer Science)', Context: ''
+    - Key: 'Undergraduate college', Value: 'IIT Delhi', Context: ''
+    - Key: 'Undergraduate year', Value: '2011', Context: 'Graduating with honors and ranking 15th among 120 students in his class. '
+    - Key: 'Undergraduate CGPA', Value: '8.7', Context: 'On a 10-point scale, '
+    - Key: 'Graduation degree', Value: 'M.Tech (Data Science)', Context: ''
+    - Key: 'Graduation college', Value: 'IIT Bombay', Context: 'Continued academic excellence at IIT Bombay'
+    - Key: 'Graduation year', Value: '2013', Context: ''
+    - Key: 'Graduation CGPA', Value: '9.2', Context: 'Considered exceptional and scoring 95 out of 100 for his final year thesis project. '
+    - Key: 'Certifications 1', Value: 'AWS Solutions Architect ', Context: 'Vijay's commitment to continuous learning is evident through his impressive certification scores. He passed the AWS Solutions Architect exam in 2019 with a score of 920 out of 1000'
+    - Key: 'Certifications 2', Value: 'Azure Data Engineer', Context: 'Pursued in the year 2020 with 875 points. '
+    - Key: 'Certifications 3', Value: 'Project Management Professional certification', Context: 'Obtained in 2021, was achieved with an "Above Target" rating from PMI, These certifications complement his practical experience and demonstrate his expertise across multiple technology platforms. '
+    - Key: 'Certifications 4', Value: 'SAFe Agilist certification', Context: 'Earned him an outstanding 98% score. Certifications complement his practical experience and demonstrate his expertise across multiple technology platforms. '
+    - Key: 'Technical Proficiency', Value: '', Context: 'In terms of technical proficiency, Vijay rates himself highly across various skills, with SQL expertise at a perfect 10 out of 10, reflecting his daily usage since 2012. His Python proficiency scores 9 out of 10, backed by over seven years of practical experience, while his machine learning capabilities rate 8 out of 10, representing five years of hands-on implementation. His cloud platform expertise, including AWS and Azure certifications, also rates 9 out of 10 with more than four years of experience, and his data visualization skills in Power BI and Tableau score 8 out of 10, establishing him as an expert in the field. \t'
+    """
 
     system_prompt = f"""
-You are an Expert Extraction Agent. Extract 100% of content from the text into EXACT schema keys. No omissions, no summaries, no new info. Output exactly 37 facts, one for each key.
+    You are an Expert Extraction Agent. Extract 100% of content from the provided text into EXACT schema keys. 
+    
+    CRITICAL INSTRUCTION:
+    - The examples provided below are for FORMATTING REFERENCE ONLY. 
+    - DO NOT use the content (Values/Contexts) from the examples for the final output. 
+    - ONLY extract data found in the 'SOURCE TEXT' below.
+    - If a specific piece of information (e.g., Certifications) is NOT present in the SOURCE TEXT, leave the Value and Context empty. DO NOT HALLUCINATE or copy from examples.
 
-CHAIN-OF-THOUGHT RULES:
-1. Atomic split: Names, locations, salaries/currencies separate.
-2. Values: Dates ISO (e.g., '2012-07-01'), numbers no commas/spaces (e.g., '350000'), preserve spaces in titles (e.g., 'Junior Developer'), degrees as 'B.Tech (Computer Science)', scores as raw (e.g., '92.5').
-3. Contexts: Use EXACT phrases from examples above for matching keys. For others, full verbatim relevant sentence/chain. Empty '' for pure facts.
-4. Coverage: All sections: Personal, Professional (first/current/prev - note LakeCorp not full), Academic, Certs (chain descriptions), Technical (value '', full para context).
-5. No hallucination: Only text.
+    CHAIN-OF-THOUGHT RULES:
+    1. Atomic split: Names, locations, salaries/currencies separate.
+    2. Values: Dates ISO (e.g., '2012-07-01'), numbers no commas/spaces (e.g., '350000'), preserve spaces in titles (e.g., 'Junior Developer'), degrees as 'B.Tech (Computer Science)', scores as raw (e.g., '92.5').
+    3. Contexts: Extract full verbatim relevant sentence/chain from the SOURCE TEXT. Empty '' for pure facts.
+    4. Coverage: All sections: Personal, Professional (first/current/prev), Academic, Certs, Technical.
+    5. No hallucination: Only text from SOURCE TEXT.
 
-{text_content}
+    --- SOURCE TEXT START ---
+    {text_content}
+    --- SOURCE TEXT END ---
 
-{examples}
+    {examples}
 
-Respond ONLY with parsed facts in schema order.
-"""
+    Respond ONLY with parsed facts in schema order.
+    """
 
     try:
         completion = client.beta.chat.completions.parse(
             model="gpt-4o-2024-08-06",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": "Extract using examples exactly."}
+                {"role": "user", "content": "Extract data from the SOURCE TEXT above."}
             ],
             response_format=DocumentStructure,
         )
